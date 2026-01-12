@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>5×5 リバーシ（最強CPU）</title>
+  <style>
+    :root{
+      --cell: 64px; --gap: 8px;
+      --green: #2f8f4e; --green2:#23723d;
+      --bg:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --accent:#38bdf8;
+    }
+    body{
+      margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      background: radial-gradient(1200px 600px at 20% 10%, #1f2937, var(--bg));
+      color:var(--text);
+      display:flex; align-items:center; justify-content:center;
+      min-height:100vh;
+    }
+    .app{ width:min(900px, 94vw); display:grid; grid-template-columns: 1fr 360px; gap:16px; }
+    @media (max-width: 930px){ .app{ grid-template-columns: 1fr; } }
+    .panel{
+      background: rgba(17,24,39,0.75);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:16px;
+      padding:16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .title{
+      display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+      padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08);
+    }
+    .title h1{ font-size:18px; margin:0; }
+    .small{ color:var(--muted); font-size:12px; }
+    .board{
+      display:grid;
+      grid-template-columns: repeat(5, var(--cell));
+      grid-template-rows: repeat(5, var(--cell));
+      gap:var(--gap);
+      justify-content:center;
+      padding: 12px 0 4px;
+    }
+    .cell{
+      width:var(--cell); height:var(--cell);
+      background: linear-gradient(180deg, var(--green), var(--green2));
+      border-radius: 14px;
+      border:1px solid rgba(0,0,0,0.25);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,0.06);
+      position:relative; cursor:pointer; user-select:none;
+    }
+    .cell.disabled{ cursor:not-allowed; opacity:0.75; }
+    .disc{ position:absolute; inset:10px; border-radius:999px; box-shadow: 0 8px 18px rgba(0,0,0,0.35); }
+    .disc.black{ background: radial-gradient(circle at 30% 30%, #4b5563, #0b0f14 70%); }
+    .disc.white{ background: radial-gradient(circle at 30% 30%, #ffffff, #d1d5db 70%); }
+    .hint{
+      position:absolute; inset: 22px; border-radius:999px;
+      border:2px dashed rgba(56,189,248,0.9);
+      box-shadow: 0 0 0 6px rgba(56,189,248,0.12);
+      opacity:0.95;
+    }
+    .row{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; padding:10px 12px;
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:12px; background: rgba(0,0,0,0.12);
+    }
+    .badge{ display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+    .dot{ width:12px; height:12px; border-radius:999px; background:#999; box-shadow:0 0 0 4px rgba(255,255,255,0.06); }
+    .dot.black{ background:#111; }
+    .dot.white{ background:#f3f4f6; }
+    .dot.turn{ outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    button{
+      appearance:none;
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(56,189,248,0.12);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    button:hover{ background: rgba(56,189,248,0.18); }
+    button:active{ transform: translateY(1px); }
+    .danger{ background: rgba(244,63,94,0.10); }
+    .danger:hover{ background: rgba(244,63,94,0.16); }
+
+    .log{
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:12px;
+      padding:10px 12px;
+      background: rgba(0,0,0,0.12);
+      overflow:auto;
+      max-height: 300px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height:1.5;
+      white-space:pre-wrap;
+    }
+    .pill{
+      display:inline-flex; gap:8px; align-items:center;
+      padding:8px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.12);
+      font-size:12px; color:var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <div class="title">
+        <h1>5×5 リバーシ（最強CPU）</h1>
+        <div class="small" id="status">準備中…</div>
+      </div>
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column; gap:12px;">
+      <div class="row">
+        <div class="badge"><span class="dot black" id="dotB"></span>黒（あなた）</div>
+        <div id="scoreB">0</div>
+      </div>
+      <div class="row">
+        <div class="badge"><span class="dot white" id="dotW"></span>白（CPU）</div>
+        <div id="scoreW">0</div>
+      </div>
+
+      <div class="row">
+        <div>手番</div>
+        <div id="turnLabel" style="font-weight:700;">-</div>
+      </div>
+
+      <div class="row">
+        <div>CPU</div>
+        <div class="pill">完全探索（αβ＋メモ化）</div>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button id="btnNew">新しいゲーム</button>
+        <button id="btnHints">ヒント非表示</button>
+      </div>
+      <button class="danger" id="btnUndo">1手戻す（あなたの手のみ）</button>
+
+      <div class="log" id="log"></div>
+      <div style="font-size:12px; color:var(--muted);">
+        白の手番は自動でCPUが打ちます。置けない時は自動パス。両者置けないと終了。
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const N = 5;
+  const EMPTY = 0, BLACK = 1, WHITE = 2;
+  const dirs = [
+    [-1,-1],[-1,0],[-1,1],
+    [0,-1],        [0,1],
+    [1,-1],[1,0],[1,1],
+  ];
+
+  const boardEl = document.getElementById("board");
+  const statusEl = document.getElementById("status");
+  const logEl = document.getElementById("log");
+  const scoreBEl = document.getElementById("scoreB");
+  const scoreWEl = document.getElementById("scoreW");
+  const turnLabelEl = document.getElementById("turnLabel");
+  const dotB = document.getElementById("dotB");
+  const dotW = document.getElementById("dotW");
+  const btnNew = document.getElementById("btnNew");
+  const btnHints = document.getElementById("btnHints");
+  const btnUndo = document.getElementById("btnUndo");
+
+  let board = makeEmpty();
+  let turn = BLACK;
+  let showHints = true;
+  let thinking = false;
+
+  // Undoは「あなた（黒）の直前の手」から戻す（CPU手もまとめて巻き戻す）
+  let history = []; // {board, turn}
+  // 探索キャッシュ（局面→最善値）
+  let tt = new Map();
+
+  function makeEmpty(){
+    return Array.from({length:N}, () => Array.from({length:N}, () => EMPTY));
+  }
+  function cloneBoard(b){ return b.map(row => row.slice()); }
+  function inBounds(r,c){ return r>=0 && r<N && c>=0 && c<N; }
+  function opponent(p){ return p===BLACK ? WHITE : BLACK; }
+
+  function countDiscs(b){
+    let cb=0, cw=0;
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        if(b[r][c]===BLACK) cb++;
+        else if(b[r][c]===WHITE) cw++;
+      }
+    }
+    return {cb,cw};
+  }
+
+  // White視点の最終スコア（白枚数 - 黒枚数）
+  function finalScoreWhite(b){
+    const {cb,cw} = countDiscs(b);
+    return cw - cb;
+  }
+
+  function flipsForMove(b, r, c, p){
+    if(!inBounds(r,c) || b[r][c]!==EMPTY) return [];
+    const opp = opponent(p);
+    const flips = [];
+    for(const [dr,dc] of dirs){
+      let rr=r+dr, cc=c+dc;
+      const line = [];
+      while(inBounds(rr,cc) && b[rr][cc]===opp){
+        line.push([rr,cc]);
+        rr+=dr; cc+=dc;
+      }
+      if(line.length>0 && inBounds(rr,cc) && b[rr][cc]===p){
+        flips.push(...line);
+      }
+    }
+    return flips;
+  }
+
+  function legalMoves(b, p){
+    const moves = [];
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const flips = flipsForMove(b,r,c,p);
+        if(flips.length>0) moves.push({r,c,flips});
+      }
+    }
+    return moves;
+  }
+
+  function applyMove(b, move, p){
+    b[move.r][move.c] = p;
+    for(const [rr,cc] of move.flips){
+      b[rr][cc] = p;
+    }
+  }
+
+  function updateTurnUI(){
+    turnLabelEl.textContent = (turn===BLACK) ? "黒（あなた）" : "白（CPU）";
+    dotB.classList.toggle("turn", turn===BLACK);
+    dotW.classList.toggle("turn", turn===WHITE);
+  }
+
+  function log(msg){
+    logEl.textContent = msg + "\n" + logEl.textContent;
+  }
+
+  function render(){
+    boardEl.innerHTML = "";
+    const moves = legalMoves(board, turn);
+    const hintSet = new Set(moves.map(m => `${m.r},${m.c}`));
+
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        const v = board[r][c];
+
+        if(v===BLACK || v===WHITE){
+          const disc = document.createElement("div");
+          disc.className = "disc " + (v===BLACK ? "black" : "white");
+          cell.appendChild(disc);
+          cell.classList.add("disabled");
+        } else {
+          if(showHints && hintSet.has(`${r},${c}`) && !thinking){
+            const hint = document.createElement("div");
+            hint.className = "hint";
+            cell.appendChild(hint);
+          }
+        }
+
+        cell.addEventListener("click", () => onCellClick(r,c));
+        boardEl.appendChild(cell);
+      }
+    }
+
+    const {cb,cw} = countDiscs(board);
+    scoreBEl.textContent = cb;
+    scoreWEl.textContent = cw;
+
+    updateTurnUI();
+
+    if(statusEl.textContent.startsWith("ゲーム終了")) return;
+    if(thinking){
+      statusEl.textContent = "CPU考え中…";
+      return;
+    }
+    statusEl.textContent = (moves.length>0) ? "置ける場所をクリック" : "置ける場所なし（パス判定中）";
+  }
+
+  function endIfGameOver(){
+    const mB = legalMoves(board, BLACK).length;
+    const mW = legalMoves(board, WHITE).length;
+    if(mB===0 && mW===0){
+      const {cb,cw} = countDiscs(board);
+      let result = "引き分け";
+      if(cb>cw) result = "黒の勝ち";
+      if(cw>cb) result = "白の勝ち";
+      statusEl.textContent = `ゲーム終了：${result}（黒${cb} / 白${cw}）`;
+      log(`終了：${result}（黒${cb} / 白${cw}）`);
+      thinking = false;
+      render();
+      return true;
+    }
+    return false;
+  }
+
+  function autoPassIfNeeded(){
+    if(endIfGameOver()) return;
+
+    const moves = legalMoves(board, turn);
+    if(moves.length===0){
+      const who = (turn===BLACK) ? "黒" : "白";
+      log(`${who}は置けないのでパス`);
+      turn = opponent(turn);
+      render();
+    }
+  }
+
+  // -------- 最強CPU：完全探索（αβ枝刈り＋メモ化） --------
+  function serialize(b){
+    // 5x5なのでシンプルに文字列キーで十分
+    let s = "";
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        s += b[r][c]; // 0/1/2
+      }
+    }
+    return s;
+  }
+
+  function orderMoves(moves){
+    // 枝刈り効率UP：角→辺→中央、次に反転枚数多い順
+    function w(m){
+      const corner = (m.r===0||m.r===N-1) && (m.c===0||m.c===N-1);
+      const edge = (m.r===0||m.r===N-1||m.c===0||m.c===N-1);
+      return (corner?1000:(edge?100:0)) + m.flips.length;
+    }
+    return moves.slice().sort((a,b)=> w(b)-w(a));
+  }
+
+  function minimaxWhite(b, player, alpha, beta){
+    // 戻り値：白視点の最終スコア（白-黒）
+    // player=WHITE: maximize, player=BLACK: minimize
+    const key = player + "|" + serialize(b);
+    const cached = tt.get(key);
+    if(cached !== undefined) return cached;
+
+    const moves = legalMoves(b, player);
+    const opp = opponent(player);
+
+    // パス or 終了
+    if(moves.length===0){
+      const oppMoves = legalMoves(b, opp);
+      if(oppMoves.length===0){
+        const fs = finalScoreWhite(b);
+        tt.set(key, fs);
+        return fs;
+      }
+      const v = minimaxWhite(b, opp, alpha, beta); // パスして手番交代
+      tt.set(key, v);
+      return v;
+    }
+
+    let best;
+    if(player === WHITE){
+      best = -Infinity;
+      for(const m of orderMoves(moves)){
+        const b2 = cloneBoard(b);
+        applyMove(b2, m, player);
+        const v = minimaxWhite(b2, opp, alpha, beta);
+        if(v > best) best = v;
+        if(best > alpha) alpha = best;
+        if(alpha >= beta) break; // βカット
+      }
+    } else {
+      best = Infinity;
+      for(const m of orderMoves(moves)){
+        const b2 = cloneBoard(b);
+        applyMove(b2, m, player);
+        const v = minimaxWhite(b2, opp, alpha, beta);
+        if(v < best) best = v;
+        if(best < beta) beta = best;
+        if(alpha >= beta) break; // αカット
+      }
+    }
+
+    tt.set(key, best);
+    return best;
+  }
+
+  function chooseBestMoveForWhite(b){
+    const moves = legalMoves(b, WHITE);
+    if(moves.length===0) return null;
+
+    // ここで探索テーブルを（適度に）クリア：5x5は小さいので毎手クリアでもOK
+    tt = new Map();
+
+    let bestMove = moves[0];
+    let bestVal = -Infinity;
+
+    for(const m of orderMoves(moves)){
+      const b2 = cloneBoard(b);
+      applyMove(b2, m, WHITE);
+      const v = minimaxWhite(b2, BLACK, -Infinity, Infinity);
+      if(v > bestVal){
+        bestVal = v;
+        bestMove = m;
+      }
+    }
+    return { move: bestMove, value: bestVal };
+  }
+  // ------------------------------------------------------
+
+  function maybeAIMove(){
+    if(thinking) return;
+    if(statusEl.textContent.startsWith("ゲーム終了")) return;
+
+    autoPassIfNeeded();
+    if(endIfGameOver()) return;
+
+    if(turn !== WHITE) return;
+
+    const moves = legalMoves(board, WHITE);
+    if(moves.length===0){
+      autoPassIfNeeded();
+      return;
+    }
+
+    thinking = true;
+    render();
+
+    // ほんの少し「考えてる感」
+    setTimeout(() => {
+      const choice = chooseBestMoveForWhite(board);
+      if(!choice || !choice.move){
+        thinking = false;
+        autoPassIfNeeded();
+        maybeAIMove();
+        return;
+      }
+
+      const m = choice.move;
+      applyMove(board, m, WHITE);
+
+      // valueは「最終的な白-黒」なので、プラスなら白有利確定の読み
+      log(`白CPU：(${m.r+1},${m.c+1})（${m.flips.length}枚反転）/ 読み：最終(白-黒)=${choice.value}`);
+
+      turn = BLACK;
+      thinking = false;
+      render();
+      autoPassIfNeeded();
+    }, 50);
+  }
+
+  function onCellClick(r,c){
+    if(thinking) return;
+    if(statusEl.textContent.startsWith("ゲーム終了")) return;
+    if(turn !== BLACK) return;
+
+    const moves = legalMoves(board, BLACK);
+    const move = moves.find(m => m.r===r && m.c===c);
+    if(!move) return;
+
+    // Undo用：黒の手の前を保存（CPU手もまとめて戻せる）
+    history.push({board: cloneBoard(board), turn: BLACK});
+
+    applyMove(board, move, BLACK);
+    log(`黒：(${r+1},${c+1})（${move.flips.length}枚反転）`);
+
+    turn = WHITE;
+    render();
+    maybeAIMove();
+  }
+
+  function newGame(){
+    board = makeEmpty();
+    history = [];
+    thinking = false;
+    tt = new Map();
+
+    // 初期配置（2x2）
+    board[1][1] = WHITE;
+    board[1][2] = BLACK;
+    board[2][1] = BLACK;
+    board[2][2] = WHITE;
+
+    turn = BLACK;
+    statusEl.textContent = "置ける場所をクリック";
+    logEl.textContent = "";
+    log("開始：黒（あなた）の手番");
+    render();
+    maybeAIMove();
+  }
+
+  btnNew.addEventListener("click", newGame);
+
+  btnHints.addEventListener("click", () => {
+    showHints = !showHints;
+    btnHints.textContent = showHints ? "ヒント非表示" : "ヒント表示";
+    render();
+  });
+
+  btnUndo.addEventListener("click", () => {
+    if(thinking) return;
+    const last = history.pop();
+    if(!last) return;
+    board = cloneBoard(last.board);
+    turn = last.turn;
+    thinking = false;
+    statusEl.textContent = "1手戻しました";
+    log("1手戻す（あなたの手を取り消し）");
+    render();
+  });
+
+  // 起動
+  showHints = true;
+  btnHints.textContent = "ヒント非表示";
+  newGame();
+})();
+</script>
+</body>
+</html>
